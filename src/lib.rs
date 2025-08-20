@@ -7,13 +7,13 @@ use std::{
 };
 
 use ::roaring::RoaringBitmap;
-use ::zerometry::{Relation, RelationBetweenShapes, Zerometry};
+use ::zerometry::{InputRelation, RelationBetweenShapes, Zerometry};
 use geo::{Densify, Destination, Haversine, MultiPolygon, Point};
 use geo_types::Polygon;
 use geojson::GeoJson;
 use h3o::{
     CellIndex, LatLng, Resolution,
-    geom::{ContainmentMode, TilerBuilder},
+    geom::{ContainmentMode, PlotterBuilder, TilerBuilder},
 };
 use heed::{
     DatabaseStat, Env, RoTxn, RwTxn,
@@ -490,7 +490,6 @@ impl Cellulite {
                     .collect();
                 Ok((to_insert, vec![]))
             }
-
             Zerometry::Polygon(polygon) => {
                 let mut tiler = TilerBuilder::new(Resolution::Zero)
                     .containment_mode(ContainmentMode::Covers)
@@ -524,6 +523,25 @@ impl Cellulite {
                 }
                 Ok((to_insert, belly_cells))
             }
+            Zerometry::Line(line) => {
+                let mut plotter = PlotterBuilder::new(Resolution::Zero).build();
+                plotter.add_batch(line.to_geo().lines()).unwrap();
+
+                let to_insert = plotter.plot().collect::<Result<Vec<_>, _>>().unwrap();
+
+                Ok((to_insert, vec![]))
+            }
+            Zerometry::MultiLines(multi_lines) => {
+                let mut plotter = PlotterBuilder::new(Resolution::Zero).build();
+                for line in multi_lines.lines() {
+                    plotter.add_batch(line.to_geo().lines()).unwrap();
+                }
+
+                let to_insert = plotter.plot().collect::<Result<Vec<_>, _>>().unwrap();
+
+                Ok((to_insert, vec![]))
+            }
+            Zerometry::Collection(collection) => todo!(),
         }
     }
 
@@ -556,18 +574,22 @@ impl Cellulite {
                 let shape = frozen_items
                     .get(item)
                     .ok_or_else(|| Error::InternalDocIdMissing(item, pos!()))?;
-                match shape.relation(&cell_shape) {
-                    Relation::Contains => {
-                        let entry = to_insert_in_belly
-                            .entry(cell)
-                            .or_insert_with(RoaringBitmap::new);
-                        entry.insert(item);
-                    }
-                    Relation::Intersects | Relation::Contained => {
-                        let entry = to_insert.entry(cell).or_insert_with(RoaringBitmap::new);
-                        entry.insert(item);
-                    }
-                    Relation::Disjoint => (),
+                let relation = shape.relation(
+                    &cell_shape,
+                    InputRelation {
+                        // we don't need to know if we're being strictly contained or not
+                        strict_contained: false,
+                        ..InputRelation::all()
+                    },
+                );
+                if relation.strict_contains.unwrap_or_default() {
+                    let entry = to_insert_in_belly
+                        .entry(cell)
+                        .or_insert_with(RoaringBitmap::new);
+                    entry.insert(item);
+                } else if relation.any_relation() {
+                    let entry = to_insert.entry(cell).or_insert_with(RoaringBitmap::new);
+                    entry.insert(item);
                 }
             }
         }
@@ -603,14 +625,18 @@ impl Cellulite {
                         .get(item_id)
                         .ok_or_else(|| Error::InternalDocIdMissing(item_id, pos!()))?;
 
-                    match shape.relation(&cell_shape) {
-                        Relation::Contains => {
-                            belly_items.insert(item_id);
-                        }
-                        Relation::Intersects | Relation::Contained => {
-                            items_to_insert.insert(item_id);
-                        }
-                        Relation::Disjoint => (),
+                    let relation = shape.relation(
+                        &cell_shape,
+                        InputRelation {
+                            // we don't need to know if we're being strictly contained or not
+                            strict_contained: false,
+                            ..InputRelation::all()
+                        },
+                    );
+                    if relation.strict_contains.unwrap_or_default() {
+                        belly_items.insert(item_id);
+                    } else if relation.any_relation() {
+                        items_to_insert.insert(item_id);
                     }
                 }
 
@@ -730,11 +756,8 @@ impl Cellulite {
 
         for item in double_check {
             let shape = self.item_db().get(rtxn, &item)?.unwrap();
-            match shape.relation(&polygon) {
-                Relation::Contains | Relation::Intersects | Relation::Contained => {
-                    ret.insert(item);
-                }
-                Relation::Disjoint => (),
+            if shape.any_relation(&polygon).any_relation() {
+                ret.insert(item);
             }
         }
 
