@@ -1,3 +1,4 @@
+use core::f64;
 use std::{
     borrow::Cow,
     cell::RefCell,
@@ -7,7 +8,7 @@ use std::{
 
 use ::roaring::RoaringBitmap;
 use ::zerometry::{Relation, RelationBetweenShapes, Zerometry};
-use geo::{Densify, Haversine, MultiPolygon};
+use geo::{Densify, Destination, Haversine, MultiPolygon, Point};
 use geo_types::Polygon;
 use geojson::GeoJson;
 use h3o::{
@@ -738,6 +739,47 @@ impl Cellulite {
         }
 
         Ok(ret)
+    }
+
+    /// Retrieve all items intersecting a circle with a given center and radius, according to the Haversine model.
+    /// This is approximate. It may miss items that are in the circle, but it will never return items that are not in the circle.
+    /// The resolution parameter controls the number of points used to approximate the circle.
+    ///
+    /// See also [`in_circle_with_params`] for a more advanced version of this function.
+    pub fn in_circle(
+        &self,
+        rtxn: &RoTxn,
+        center: Point,
+        radius: f64,
+        resolution: usize,
+    ) -> Result<RoaringBitmap> {
+        self.in_circle_with_params(rtxn, center, radius, resolution, &Haversine, &mut |_| ())
+    }
+
+    /// Retrieve all items intersecting a circle with a given center and radius.
+    /// This is approximate. It may miss items that are in the circle, but it will never return items that are not in the circle.
+    /// The resolution parameter controls the number of points used to approximate the circle.
+    pub fn in_circle_with_params<Measure: Destination<f64>>(
+        &self,
+        rtxn: &RoTxn,
+        center: Point,
+        radius: f64,
+        resolution: usize,
+        measure: &Measure,
+        inspector: &mut dyn FnMut((FilteringStep, CellIndex)),
+    ) -> Result<RoaringBitmap> {
+        let n = resolution as f64;
+
+        // Build a circle-approximating polygon that tries to cover the real circle
+        let mut points = Vec::new();
+        for i in 0..resolution {
+            let bearing = 360.0 * i as f64 / n;
+            points.push(measure.destination(center, bearing, radius));
+        }
+
+        let polygon = Polygon::new(points.into(), Vec::new());
+
+        self.in_shape(rtxn, &polygon, inspector)
     }
 }
 
