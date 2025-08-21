@@ -1,5 +1,6 @@
 use std::{fmt, ops::Deref};
 
+use geo::{Polygon, polygon};
 use geojson::GeoJson;
 use h3o::LatLng;
 use heed::{Env, EnvOpenOptions, RoTxn, WithTls};
@@ -229,6 +230,70 @@ fn bug_write_points_create_unrelated_cells() {
     Cell { res: 1, center: (47.9847, 6.9179) }: RoaringBitmap<[0]>
     Cell { res: 1, center: (40.9713, 2.8207) }: RoaringBitmap<[1]>
     ");
+}
+
+#[test]
+fn query_points_on_transmeridian_cell() {
+    // In this test we want to make sure that we can insert point that fall on a transmeridian cell.
+    // We want to first make sure it works with a res0 cell and then a res1 as they're both handled
+    // in two different function.
+
+    // The lake is a transmeridian cell at res0 but not at res1
+    let lake = GeoJson::from(geojson::Geometry::new(geojson::Value::Point(vec![
+        -172.36201, 64.42921,
+    ])));
+    // The airport is a transmeridian cell at res0 and res1
+    let airport = GeoJson::from(geojson::Geometry::new(geojson::Value::Point(vec![
+        -173.23841, 64.37949,
+    ])));
+    let contains_lake =
+        polygon![(x: -172.37, y: 64.420), (x: -172.17, y: 64.420), (x: -172.17, y: 64.69)];
+    let contains_airport =
+        polygon![(x: -173.3, y: 64.3), (x: -173.3, y: 64.4), (x: -173.0, y: 64.4)];
+    let contains_both = polygon![(x: -174.0, y: 64.0), (x: -172.0, y: 64.0), (x: -172.0, y: 65.0)];
+
+    let mut db = create_database();
+    let mut wtxn = db.env.write_txn().unwrap();
+    db.database.threshold = 2;
+
+    db.add(&mut wtxn, 0, &lake).unwrap();
+    db.build(&mut wtxn, &NoProgress).unwrap();
+    insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Items
+    0: Point(Zoint { lng: -172.36201, lat: 64.42921 })
+    # Cells
+    Cell { res: 0, center: (64.4181, -158.9175) }: RoaringBitmap<[0]>
+    ");
+
+    let ret = db.in_shape(&wtxn, &contains_lake, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
+    let ret = db.in_shape(&wtxn, &contains_airport, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[]>");
+    let ret = db.in_shape(&wtxn, &contains_both, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
+
+    db.add(&mut wtxn, 1, &airport).unwrap();
+    db.build(&mut wtxn, &NoProgress).unwrap();
+    insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Items
+    0: Point(Zoint { lng: -172.36201, lat: 64.42921 })
+    1: Point(Zoint { lng: -173.23841, lat: 64.37949 })
+    # Cells
+    Cell { res: 0, center: (64.4181, -158.9175) }: RoaringBitmap<[0, 1]>
+    Cell { res: 1, center: (67.6370, -175.8874) }: RoaringBitmap<[0, 1]>
+    Cell { res: 2, center: (62.9574, -171.6851) }: RoaringBitmap<[0]>
+    Cell { res: 2, center: (64.6946, -176.8313) }: RoaringBitmap<[1]>
+    ");
+
+    let ret = db.in_shape(&wtxn, &contains_lake, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
+    println!("hello");
+    let ret = db
+        .in_shape(&wtxn, &contains_airport, &mut |s| println!("{s:?}"))
+        .unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[1]>");
+    let ret = db.in_shape(&wtxn, &contains_both, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1]>");
 }
 
 /*
