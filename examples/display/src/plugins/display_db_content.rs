@@ -5,7 +5,7 @@ use std::sync::{
 
 use egui::{Color32, RichText, Ui};
 use egui_double_slider::DoubleSlider;
-use geo::{Contains, Intersects};
+use geo::{Contains, Intersects, MultiPolygon};
 use h3o::Resolution;
 use walkers::Plugin;
 
@@ -98,11 +98,11 @@ impl Plugin for DisplayDbContent {
 
             for (cell, bitmap) in self.runner.all_db_cells.lock().iter() {
                 if (min..max).contains(&(cell.resolution() as usize)) {
-                    let solvent = h3o::geom::SolventBuilder::new().build();
-                    let cell_polygon = solvent.dissolve(Some(*cell)).unwrap();
-                    let polygon = &cell_polygon.0[0];
+                    let cell_polygon = MultiPolygon::from(*cell);
 
-                    if polygon.intersects(&displayed_rect) || displayed_rect.contains(polygon) {
+                    if cell_polygon.intersects(&displayed_rect)
+                        || displayed_rect.contains(&cell_polygon)
+                    {
                         display_cell(
                             projector,
                             painter,

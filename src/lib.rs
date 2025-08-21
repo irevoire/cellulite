@@ -500,11 +500,8 @@ impl Cellulite {
                 let mut belly_cells = Vec::new();
                 for cell in tiler.into_coverage() {
                     // If the cell is entirely contained in the polygon, insert directly to inner_shape_cell_db
-                    let solvent = h3o::geom::SolventBuilder::new().build();
-                    let cell_polygon = solvent.dissolve(Some(cell)).unwrap();
-                    // We should use the MultiPolygon and be strict about the containment. All parts must be contained
-                    let cell_polygon = &cell_polygon.0[0];
-                    if polygon.contains(cell_polygon) {
+                    let cell_polygon = MultiPolygon::from(cell);
+                    if polygon.strict_contains(&cell_polygon) {
                         belly_cells.push(cell);
                     } else {
                         // Otherwise use insert_shape_in_cell for partial overlaps
@@ -708,15 +705,12 @@ impl Cellulite {
                 continue;
             };
 
-            let solvent = h3o::geom::SolventBuilder::new().build();
-            let cell_polygon = solvent.dissolve(Some(cell)).unwrap();
+            let cell_polygon = MultiPolygon::from(cell);
 
-            // let cell_polygon = bounding_box(cell);
-            let cell_polygon = &cell_polygon.0[0];
-            if geo::Contains::contains(&polygon, cell_polygon) {
+            if geo::Contains::contains(&polygon, &cell_polygon) {
                 (inspector)((FilteringStep::Returned, cell));
                 ret |= items;
-            } else if geo::Intersects::intersects(&polygon, cell_polygon) {
+            } else if geo::Intersects::intersects(&polygon, &cell_polygon) {
                 let resolution = cell.resolution();
                 if items.len() < self.threshold || resolution == Resolution::Fifteen {
                     (inspector)((FilteringStep::RequireDoubleCheck, cell));
@@ -727,7 +721,7 @@ impl Cellulite {
                         .containment_mode(ContainmentMode::Covers)
                         .build();
                     if too_large {
-                        tiler.add(cell_polygon.clone())?;
+                        tiler.add_batch(cell_polygon.into_iter())?;
                     } else {
                         tiler.add(polygon.clone())?;
                     }
@@ -823,10 +817,7 @@ pub struct Stats {
 }
 
 fn get_cell_shape(cell: CellIndex) -> MultiPolygon {
-    h3o::geom::SolventBuilder::new()
-        .build()
-        .dissolve(Some(cell))
-        .unwrap()
+    cell.into()
 }
 
 /// Return None if we cannot increase the resolution
@@ -837,14 +828,9 @@ fn get_children_cells(cell: CellIndex) -> Result<Option<Vec<CellIndex>>, Error> 
     let Some(next_res) = cell.resolution().succ() else {
         return Ok(None);
     };
-    let cell_polygon = get_cell_shape(cell);
-    let mut tiler = TilerBuilder::new(next_res)
-        .containment_mode(ContainmentMode::Covers)
-        .build();
-    for polygon in cell_polygon.0.into_iter() {
-        tiler.add(polygon)?;
-    }
-    Ok(Some(tiler.into_coverage().collect()))
+    // safe to unwrap because we just increased the resolution
+    let center_child = cell.center_child(next_res).unwrap();
+    Ok(Some(center_child.grid_disk(2)))
 }
 
 struct FrozenItems<'a> {

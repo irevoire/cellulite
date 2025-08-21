@@ -6,7 +6,7 @@ use fst::{
     automaton::{Levenshtein, Str},
     Automaton, IntoStreamer, Streamer,
 };
-use geo::Intersects;
+use geo::{Intersects, MultiPolygon};
 use geojson::GeoJson;
 use h3o::{geom, CellIndex, Resolution};
 use std::ops::RangeInclusive;
@@ -207,9 +207,7 @@ impl Plugin for ItemsInspector {
             for cell in cells.iter() {
                 let resolution = cell.resolution();
                 if self.resolution_range.contains(&resolution) {
-                    let solvent = geom::SolventBuilder::new().build();
-                    let cell_polygon = solvent.dissolve(Some(*cell)).unwrap();
-                    let cell_polygon = &cell_polygon.0[0];
+                    let cell_polygon = MultiPolygon::from(*cell);
 
                     if cell_polygon.intersects(&displayed_rect) {
                         display_cell(projector, painter, *cell, Color32::DARK_BLUE);

@@ -246,7 +246,7 @@ fn main() {
             time.elapsed() / repeat
         );
 
-        let repeat = 100;
+        let repeat = 10;
         let gard = gard();
         let result = cellulite.in_shape(&rtxn, &gard, &mut |_| ()).unwrap();
         for _ in 0..repeat {
@@ -259,7 +259,7 @@ fn main() {
             time.elapsed() / repeat
         );
 
-        let repeat = 100;
+        let repeat = 10;
         let occitanie = occitanie();
         let result = cellulite.in_shape(&rtxn, &occitanie, &mut |_| ()).unwrap();
         for _ in 0..repeat {
