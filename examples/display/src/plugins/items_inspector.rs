@@ -8,7 +8,7 @@ use fst::{
 };
 use geo::{Intersects, MultiPolygon};
 use geojson::GeoJson;
-use h3o::{geom, CellIndex, Resolution};
+use h3o::{CellIndex, Resolution};
 use std::ops::RangeInclusive;
 use walkers::{Plugin, Projector};
 

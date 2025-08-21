@@ -110,7 +110,7 @@ impl Cellulite {
     }
 
     pub const fn default_threshold() -> u64 {
-        200
+        2
     }
 
     pub fn create_from_env<Tls>(env: &Env<Tls>, wtxn: &mut RwTxn) -> Result<Self> {
@@ -538,7 +538,26 @@ impl Cellulite {
 
                 Ok((to_insert, vec![]))
             }
-            Zerometry::Collection(collection) => todo!(),
+            Zerometry::Collection(collection) => {
+                let (mut insert, mut belly) =
+                    Self::explode_level_zero_geo(Zerometry::MultiPoints(collection.points()))?;
+                let (mut i, mut b) =
+                    Self::explode_level_zero_geo(Zerometry::MultiLines(collection.lines()))?;
+                insert.append(&mut i);
+                belly.append(&mut b);
+                let (mut i, mut b) =
+                    Self::explode_level_zero_geo(Zerometry::MultiPolygon(collection.polygons()))?;
+                insert.append(&mut i);
+                belly.append(&mut b);
+
+                insert.sort_unstable();
+                belly.sort_unstable();
+
+                insert.dedup();
+                belly.dedup();
+
+                Ok((insert, belly))
+            }
         }
     }
 

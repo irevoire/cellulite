@@ -1,6 +1,6 @@
 use std::{fmt, ops::Deref};
 
-use geo::{Polygon, polygon};
+use geo::polygon;
 use geojson::GeoJson;
 use h3o::LatLng;
 use heed::{Env, EnvOpenOptions, RoTxn, WithTls};
@@ -287,13 +287,64 @@ fn query_points_on_transmeridian_cell() {
 
     let ret = db.in_shape(&wtxn, &contains_lake, &mut |_| ()).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
-    println!("hello");
     let ret = db
         .in_shape(&wtxn, &contains_airport, &mut |s| println!("{s:?}"))
         .unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[1]>");
     let ret = db.in_shape(&wtxn, &contains_both, &mut |_| ()).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1]>");
+}
+
+#[test]
+fn store_all_kind_of_collection() {
+    // Purpose of the test is just to make sure w e can store all kinds of collection
+    let mut db = create_database();
+    let mut wtxn = db.env.write_txn().unwrap();
+    db.database.threshold = 2;
+    let geometry_collection = geojson::Value::GeometryCollection(vec![geojson::Geometry::new(
+        geojson::Value::Point(vec![6.0197316417968105, 49.63676497357687]),
+    )]);
+    let geometry = geojson::Geometry::new(geometry_collection.clone());
+    let feature = geojson::Feature {
+        geometry: Some(geometry.clone()),
+        ..Default::default()
+    };
+    let feature_collection = geojson::FeatureCollection {
+        features: vec![feature.clone()],
+        ..Default::default()
+    };
+    db.add(&mut wtxn, 0, &geometry.into()).unwrap();
+    db.add(&mut wtxn, 1, &feature.into()).unwrap();
+    db.add(&mut wtxn, 2, &feature_collection.into()).unwrap();
+
+    db.build(&mut wtxn, &NoProgress).unwrap();
+    insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Items
+    0: Collection(Zollection { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: ZultiPoints { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: [Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 }] }, lines: ZultiLines { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zines: [] }, polygons: ZultiPolygons { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zolygons: [] } })
+    1: Collection(Zollection { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: ZultiPoints { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: [Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 }] }, lines: ZultiLines { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zines: [] }, polygons: ZultiPolygons { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zolygons: [] } })
+    2: Collection(Zollection { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: ZultiPoints { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: [Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 }] }, lines: ZultiLines { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zines: [] }, polygons: ZultiPolygons { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zolygons: [] } })
+    # Cells
+    Cell { res: 0, center: (48.7583, 18.3030) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 1, center: (47.9847, 6.9179) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 2, center: (50.4683, 5.6987) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 3, center: (49.7185, 6.6446) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 4, center: (49.7700, 6.0547) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 5, center: (49.6335, 5.9622) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 6, center: (49.6264, 6.0462) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 7, center: (49.6418, 6.0270) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 8, center: (49.6356, 6.0186) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 9, center: (49.6356, 6.0186) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 10, center: (49.6365, 6.0198) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 11, center: (49.6368, 6.0194) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 12, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 13, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 14, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
+    Cell { res: 15, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
+    ");
+    let contains =
+        polygon![(x: 6.0, y: 49.0), (x: 7.0, y: 49.0), (x: 7.0, y: 50.0), (x: 6.0, y: 50.0)];
+    let ret = db.in_shape(&wtxn, &contains, &mut |_| ()).unwrap();
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1, 2]>");
 }
 
 /*
