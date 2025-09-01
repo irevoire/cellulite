@@ -402,7 +402,6 @@ impl Cellulite {
 
         let tls: ThreadLocal<RefCell<(HashMap<_, _>, HashMap<_, _>)>> = ThreadLocal::new();
 
-        // TODO: Could be parallelized very easily, we just have to merge the hashmap at the end or use a shared map
         items
             .iter()
             .par_bridge()
@@ -842,7 +841,6 @@ fn get_cell_shape(cell: CellIndex) -> MultiPolygon {
 /// Return None if we cannot increase the resolution
 /// Otherwise, return the children cells in a very non-efficient way
 /// Note: We cannot use the `get_children_cells` function because it doesn't return the full coverage of our cells and leaves holes
-/// TODO: Optimize this to avoid the whole dissolve + tiler thingy. We can probably do better with the grid_disk at distance 1 or 2 idk
 fn get_children_cells(cell: CellIndex) -> Result<Option<Vec<CellIndex>>, Error> {
     let Some(next_res) = cell.resolution().succ() else {
         return Ok(None);
