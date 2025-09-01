@@ -9,7 +9,7 @@ use egui_double_slider::DoubleSlider;
 use geo::{GeodesicArea, Geometry};
 use geo_types::Coord;
 use h3o::Resolution;
-use walkers::{Plugin, Position};
+use walkers::{Plugin, Position, Projector};
 
 use crate::{
     runner::Runner,
@@ -197,32 +197,44 @@ impl Plugin for PolygonFiltering {
                             draw_diagonal_cross(painter, pos.to_pos2(), Color32::DARK_GREEN);
                         }
                     }
-                    Geometry::Polygon(coords) => {
-                        let exterior = coords.exterior();
-                        let points: Vec<_> = exterior
-                            .points()
-                            .map(|coord| {
-                                let pos = projector.project(Position::new(coord.x(), coord.y()));
-                                pos.to_pos2()
-                            })
-                            .collect();
-                        painter.line(points, PathStroke::new(4.0, Color32::DARK_GREEN));
+                    Geometry::Polygon(polygon) => {
+                        project_and_draw_line(painter, projector, polygon.exterior().points());
                     }
                     Geometry::MultiPolygon(coords) => {
                         for polygon in coords {
-                            let points: Vec<_> = polygon
-                                .exterior()
-                                .points()
-                                .map(|coord| {
-                                    let pos =
-                                        projector.project(Position::new(coord.x(), coord.y()));
-                                    pos.to_pos2()
-                                })
-                                .collect();
-                            painter.line(points, PathStroke::new(4.0, Color32::DARK_GREEN));
+                            project_and_draw_line(painter, projector, polygon.exterior().points());
                         }
                     }
-                    _ => todo!(),
+                    Geometry::Line(line) => {
+                        project_and_draw_line(
+                            painter,
+                            projector,
+                            [line.start_point(), line.end_point()].into_iter(),
+                        );
+                    }
+                    Geometry::LineString(line_string) => {
+                        project_and_draw_line(painter, projector, line_string.points());
+                    }
+                    Geometry::MultiLineString(multi_line_string) => {
+                        for line_string in multi_line_string {
+                            project_and_draw_line(painter, projector, line_string.points());
+                        }
+                    }
+                    Geometry::GeometryCollection(_geometry_collection) => todo!(),
+                    Geometry::Rect(rect) => {
+                        project_and_draw_line(
+                            painter,
+                            projector,
+                            rect.to_polygon().exterior().points(),
+                        );
+                    }
+                    Geometry::Triangle(triangle) => {
+                        project_and_draw_line(
+                            painter,
+                            projector,
+                            triangle.to_polygon().exterior().points(),
+                        );
+                    }
                 }
             }
 
@@ -251,6 +263,20 @@ impl Plugin for PolygonFiltering {
             }
         }
     }
+}
+
+fn project_and_draw_line(
+    painter: &egui::Painter,
+    projector: &Projector,
+    points: impl Iterator<Item = geo_types::Point>,
+) {
+    let points = points
+        .map(|point| {
+            let pos = projector.project(Position::new(point.x(), point.y()));
+            pos.to_pos2()
+        })
+        .collect();
+    painter.line(points, PathStroke::new(4.0, Color32::DARK_GREEN));
 }
 
 fn display_polygon_stats(ui: &mut Ui, polygon: &geo::geometry::Polygon) {

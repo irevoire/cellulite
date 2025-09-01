@@ -22,6 +22,7 @@ mod france_query_zones;
 mod france_regions;
 mod france_shops;
 mod france_zones;
+mod paris_voies;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -76,6 +77,8 @@ struct Args {
 enum Dataset {
     /// 100_000 points representing shops in France
     Shop,
+    /// 25_038 lines representing road section in Paris
+    ParisVoies,
     /// 22_000_000 points representing houses and buildings in France
     CadastreAddr,
     /// With the selector you can chose a department in france with its number.
@@ -97,6 +100,9 @@ fn main() {
     let time = std::time::Instant::now();
     let input = match args.dataset {
         Dataset::Shop => &mut france_shops::parse() as &mut dyn Iterator<Item = (String, GeoJson)>,
+        Dataset::ParisVoies => {
+            &mut paris_voies::parse() as &mut dyn Iterator<Item = (String, GeoJson)>
+        }
         Dataset::CadastreAddr => {
             &mut france_cadastre_addresses::parse() as &mut dyn Iterator<Item = (String, GeoJson)>
         }
