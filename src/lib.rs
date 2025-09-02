@@ -1,6 +1,5 @@
 use core::f64;
 use std::{
-    borrow::Cow,
     cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     sync::atomic::Ordering,
@@ -21,7 +20,10 @@ use heed::{
     types::{Bytes, U32},
 };
 use intmap::IntMap;
-use keys::{CellIndexCodec, CellKeyCodec, ItemKeyCodec, Key, KeyPrefixVariantCodec, KeyVariant};
+use keys::{
+    CellIndexCodec, CellKeyCodec, ItemKeyCodec, Key, KeyPrefixVariantCodec, KeyVariant,
+    MetadataKey, UpdateType,
+};
 use metadata::{Version, VersionCodec};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use steppe::Progress;
@@ -60,56 +62,6 @@ steppe::make_atomic_progress!(Item alias AtomicItemStep => "item");
 steppe::make_atomic_progress!(Cell alias AtomicCellStep => "cell");
 
 type Result<O, E = Error> = std::result::Result<O, E>;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum UpdateType {
-    Insert = 0,
-    Delete = 1,
-}
-
-impl<'a> heed::BytesEncode<'a> for UpdateType {
-    type EItem = Self;
-
-    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, heed::BoxedError> {
-        Ok(Cow::Owned(vec![*item as u8]))
-    }
-}
-
-impl<'a> heed::BytesDecode<'a> for UpdateType {
-    type DItem = Self;
-
-    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, heed::BoxedError> {
-        match bytes {
-            [b] if *b == UpdateType::Insert as u8 => Ok(UpdateType::Insert),
-            [b] if *b == UpdateType::Delete as u8 => Ok(UpdateType::Delete),
-            _ => panic!("Invalid update type {bytes:?}"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MetadataKey {
-    Version = 0,
-}
-
-impl<'a> heed::BytesEncode<'a> for MetadataKey {
-    type EItem = Self;
-
-    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, heed::BoxedError> {
-        Ok(Cow::Owned(vec![*item as u8]))
-    }
-}
-
-impl<'a> heed::BytesDecode<'a> for MetadataKey {
-    type DItem = Self;
-
-    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, heed::BoxedError> {
-        match bytes {
-            [b] if *b == MetadataKey::Version as u8 => Ok(MetadataKey::Version),
-            _ => panic!("Invalid metadata key {bytes:?}"),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Cellulite {

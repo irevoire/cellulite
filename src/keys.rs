@@ -6,6 +6,10 @@ use heed::{
     types::U64,
 };
 
+/// Codec used to encode and decode the item id in the item database.
+///
+/// The reason why we're using this codec instead of a `U32<BE>` is because the
+/// keys must be aligned of 64 bits.
 pub struct ItemKeyCodec;
 
 impl heed::BytesEncode<'_> for ItemKeyCodec {
@@ -25,6 +29,11 @@ impl heed::BytesDecode<'_> for ItemKeyCodec {
     }
 }
 
+/// Codec used to encode and decode the cell id.
+///
+/// - The first byte is used to indicate if it's a belly cell or a normal cell.
+/// - Then the cell is encoded as a u64
+/// - And finally there is some padding to align the roaring bitmap on 64 bits
 pub struct CellKeyCodec;
 
 impl<'a> heed::BytesEncode<'a> for CellKeyCodec {
@@ -121,5 +130,55 @@ impl heed::BytesDecode<'_> for CellIndexCodec {
     fn bytes_decode(bytes: &'_ [u8]) -> Result<Self::DItem, heed::BoxedError> {
         let cell = BigEndian::read_u64(bytes);
         Ok(cell.try_into()?)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum UpdateType {
+    Insert = 0,
+    Delete = 1,
+}
+
+impl<'a> heed::BytesEncode<'a> for UpdateType {
+    type EItem = Self;
+
+    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, heed::BoxedError> {
+        Ok(Cow::Owned(vec![*item as u8]))
+    }
+}
+
+impl<'a> heed::BytesDecode<'a> for UpdateType {
+    type DItem = Self;
+
+    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, heed::BoxedError> {
+        match bytes {
+            [b] if *b == UpdateType::Insert as u8 => Ok(UpdateType::Insert),
+            [b] if *b == UpdateType::Delete as u8 => Ok(UpdateType::Delete),
+            _ => panic!("Invalid update type {bytes:?}"),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MetadataKey {
+    Version = 0,
+}
+
+impl<'a> heed::BytesEncode<'a> for MetadataKey {
+    type EItem = Self;
+
+    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, heed::BoxedError> {
+        Ok(Cow::Owned(vec![*item as u8]))
+    }
+}
+
+impl<'a> heed::BytesDecode<'a> for MetadataKey {
+    type DItem = Self;
+
+    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, heed::BoxedError> {
+        match bytes {
+            [b] if *b == MetadataKey::Version as u8 => Ok(MetadataKey::Version),
+            _ => panic!("Invalid metadata key {bytes:?}"),
+        }
     }
 }
