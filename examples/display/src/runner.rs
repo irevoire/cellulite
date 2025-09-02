@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use cellulite::{roaring::RoaringBitmapCodec, Cellulite, FilteringStep, Stats};
+use cellulite::{reader::FilteringStep, roaring::RoaringBitmapCodec, Cellulite, Stats};
 use egui::mutex::Mutex;
 use fst::{IntoStreamer, Map, MapBuilder, Streamer};
 use geo_types::{Coord, LineString, Polygon};

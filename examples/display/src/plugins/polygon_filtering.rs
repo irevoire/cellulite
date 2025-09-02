@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use cellulite::FilteringStep;
+use cellulite::reader::FilteringStep;
 use egui::{epaint::PathStroke, Color32, RichText, Ui, Vec2};
 use egui_double_slider::DoubleSlider;
 use geo::{GeodesicArea, Geometry};
