@@ -186,7 +186,7 @@ impl Cellulite {
         self.cell.remap_data_type()
     }
 
-    fn inner_shape_cell_db(&self) -> heed::Database<CellKeyCodec, RoaringBitmapCodec> {
+    fn belly_cell_db(&self) -> heed::Database<CellKeyCodec, RoaringBitmapCodec> {
         self.cell.remap_data_type()
     }
 
@@ -224,18 +224,18 @@ impl Cellulite {
     }
 
     /// Return all the cells used internally in the database
-    pub fn inner_shape_cells<'a>(
+    pub fn inner_belly_cells<'a>(
         &self,
         rtxn: &'a RoTxn,
     ) -> Result<impl Iterator<Item = Result<(CellIndex, RoaringBitmap), heed::Error>> + 'a> {
         Ok(self
             .cell
             .remap_key_type::<KeyPrefixVariantCodec>()
-            .prefix_iter(rtxn, &KeyVariant::InnerShape)?
+            .prefix_iter(rtxn, &KeyVariant::Belly)?
             .remap_types::<CellKeyCodec, RoaringBitmapCodec>()
             .map(|res| {
                 res.map(|(key, bitmap)| {
-                    let Key::InnerShape(cell) = key else {
+                    let Key::Belly(cell) = key else {
                         unreachable!()
                     };
                     (cell, bitmap)
@@ -362,7 +362,7 @@ impl Cellulite {
 
     /// 1. We remove all the items by id of the items database
     /// 2. We do a scan of the whole cell database and remove the items from the bitmaps
-    /// 3. We do a scan of the whole inner_shape_cell_db and remove the items from the bitmaps
+    /// 3. We do a scan of the whole belly_cell_db and remove the items from the bitmaps
     ///
     /// TODO: We could optimize 2 and 3 by diving into the cells and stopping early when one is empty
     fn remove_deleted_items(
@@ -376,7 +376,7 @@ impl Cellulite {
             pub enum RemoveDeletedItemsSteps {
                 RemoveDeletedItemsFromItemsDatabase,
                 RemoveDeletedItemsFromCellsDatabase,
-                RemoveDeletedItemsFromInnerShapeCellsDatabase,
+                RemoveDeletedItemsFromBellyCellsDatabase,
             }
         }
 
@@ -414,13 +414,13 @@ impl Cellulite {
         }
         drop(iter);
 
-        progress.update(RemoveDeletedItemsSteps::RemoveDeletedItemsFromInnerShapeCellsDatabase);
+        progress.update(RemoveDeletedItemsSteps::RemoveDeletedItemsFromBellyCellsDatabase);
         atomic.store(0, Ordering::Relaxed);
         progress.update(step);
         let mut iter = self
-            .inner_shape_cell_db()
+            .belly_cell_db()
             .remap_key_type::<KeyPrefixVariantCodec>()
-            .prefix_iter_mut(wtxn, &KeyVariant::InnerShape)?
+            .prefix_iter_mut(wtxn, &KeyVariant::Belly)?
             .remap_key_type::<CellKeyCodec>();
         while let Some(ret) = iter.next() {
             let (key, mut bitmap) = ret?;
@@ -519,10 +519,10 @@ impl Cellulite {
         for (cell, items) in belly {
             let mut bitmap = self
                 .cell_db()
-                .get(wtxn, &Key::InnerShape(cell))?
+                .get(wtxn, &Key::Belly(cell))?
                 .unwrap_or_default();
             bitmap |= items;
-            self.cell_db().put(wtxn, &Key::InnerShape(cell), &bitmap)?;
+            self.cell_db().put(wtxn, &Key::Belly(cell), &bitmap)?;
             atomic.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -558,7 +558,7 @@ impl Cellulite {
                 let mut to_insert = Vec::new();
                 let mut belly_cells = Vec::new();
                 for cell in tiler.into_coverage() {
-                    // If the cell is entirely contained in the polygon, insert directly to inner_shape_cell_db
+                    // If the cell is entirely contained in the polygon, insert directly to belly_cell_db
                     let cell_polygon = MultiPolygon::from(cell);
                     if polygon.strict_contains(&cell_polygon) {
                         belly_cells.push(cell);
@@ -672,12 +672,11 @@ impl Cellulite {
         // 3.
         for (cell, items) in to_insert_in_belly {
             let mut bitmap = self
-                .inner_shape_cell_db()
-                .get(wtxn, &Key::Cell(cell))?
+                .belly_cell_db()
+                .get(wtxn, &Key::Belly(cell))?
                 .unwrap_or_default();
             bitmap |= items;
-            self.inner_shape_cell_db()
-                .put(wtxn, &Key::Cell(cell), &bitmap)?;
+            self.belly_cell_db().put(wtxn, &Key::Belly(cell), &bitmap)?;
         }
 
         for (cell, mut items_to_insert) in to_insert {
@@ -715,13 +714,13 @@ impl Cellulite {
                     }
                 }
 
-                let mut inner_shape_cells = self
-                    .inner_shape_cell_db()
-                    .get(wtxn, &Key::Cell(cell))?
+                let mut belly_cells = self
+                    .belly_cell_db()
+                    .get(wtxn, &Key::Belly(cell))?
                     .unwrap_or_default();
-                inner_shape_cells |= belly_items;
-                self.inner_shape_cell_db()
-                    .put(wtxn, &Key::Cell(cell), &inner_shape_cells)?;
+                belly_cells |= belly_items;
+                self.belly_cell_db()
+                    .put(wtxn, &Key::Belly(cell), &belly_cells)?;
 
                 self.insert_chunk_of_items_recursively(wtxn, items_to_insert, cell, frozen_items)?;
             }

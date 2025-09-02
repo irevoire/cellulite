@@ -188,7 +188,7 @@ impl Runner {
 
             let mut inner_shape_db_cells = Vec::new();
             let mut inner_shape_db_cells_count = 0;
-            for entry in self.db.inner_shape_cells(&rtxn).unwrap() {
+            for entry in self.db.inner_belly_cells(&rtxn).unwrap() {
                 inner_shape_db_cells_count += 1;
                 let (cell, bitmap) = entry.unwrap();
                 inner_shape_db_cells.push((cell, bitmap));
@@ -251,7 +251,7 @@ impl Runner {
                     *self.all_db_cells.lock() = all_db_cells;
 
                     let mut inner_shape_db_cells = Vec::new();
-                    for entry in self.db.inner_shape_cells(&wtxn).unwrap() {
+                    for entry in self.db.inner_belly_cells(&wtxn).unwrap() {
                         let (cell, bitmap) = entry.unwrap();
                         inner_shape_db_cells.push((cell, bitmap));
                     }

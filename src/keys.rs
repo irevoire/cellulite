@@ -43,11 +43,11 @@ impl<'a> heed::BytesEncode<'a> for CellKeyCodec {
                 ret.extend_from_slice(&output.to_be_bytes());
                 ret.extend(std::iter::repeat_n(0, missing_to_align));
             }
-            Key::InnerShape(cell) => {
+            Key::Belly(cell) => {
                 let capacity = size_of::<KeyVariant>() + size_of_val(cell);
                 let missing_to_align = ALIGNMENT - (capacity % ALIGNMENT);
                 ret = Vec::with_capacity(capacity + missing_to_align);
-                ret.push(KeyVariant::InnerShape as u8);
+                ret.push(KeyVariant::Belly as u8);
                 let output: u64 = (*cell).into();
                 ret.extend_from_slice(&output.to_be_bytes());
                 ret.extend(std::iter::repeat_n(0, missing_to_align));
@@ -68,9 +68,9 @@ impl heed::BytesDecode<'_> for CellKeyCodec {
                 let cell = BigEndian::read_u64(bytes);
                 Key::Cell(cell.try_into()?)
             }
-            v if v == KeyVariant::InnerShape as u8 => {
+            v if v == KeyVariant::Belly as u8 => {
                 let cell = BigEndian::read_u64(bytes);
-                Key::InnerShape(cell.try_into()?)
+                Key::Belly(cell.try_into()?)
             }
             _ => unreachable!(),
         };
@@ -82,14 +82,14 @@ impl heed::BytesDecode<'_> for CellKeyCodec {
 
 pub enum Key {
     Cell(CellIndex),
-    InnerShape(CellIndex),
+    Belly(CellIndex),
 }
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyVariant {
     Cell = 1,
-    InnerShape = 2,
+    Belly = 2,
 }
 
 pub struct KeyPrefixVariantCodec;
