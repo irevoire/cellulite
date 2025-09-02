@@ -1,6 +1,6 @@
 use h3o::error::{InvalidGeometry, InvalidLatLng};
 
-use crate::ItemId;
+use crate::{ItemId, metadata::Version};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -11,6 +11,11 @@ pub enum Error {
         "Document with id `{0}` contains a {1} but only `Point`, `Polygon`, `MultiPoint` and `MultiPolygon` types are supported"
     )]
     InvalidGeometryTypeFormat(ItemId, &'static str),
+    #[error(
+        "Version mismatch while building, was expecting v{} but instead got v{}. Upgrade the version before building.",
+        Version::default(), .0
+    )]
+    VersionMismatchOnBuild(Version),
 
     // External errors, sometimes it's a user error and sometimes it's not
     #[error(transparent)]

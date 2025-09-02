@@ -31,6 +31,10 @@ impl DatabaseHandle {
     fn snap(&self, rtxn: &RoTxn) -> String {
         let mut s = String::new();
 
+        s.push_str(&format!(
+            "# Version: {}\n",
+            self.database.get_version(rtxn).unwrap()
+        ));
         s.push_str("# Items\n");
         let iter = self.database.item.iter(rtxn).unwrap();
         for ret in iter {
@@ -107,6 +111,7 @@ fn basic_write() {
     db.add(&mut wtxn, 0, &point).unwrap();
 
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     # Cells
@@ -114,6 +119,7 @@ fn basic_write() {
 
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     # Cells
@@ -130,6 +136,7 @@ fn basic_write() {
     db.add(&mut wtxn, 2, &point).unwrap();
 
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     1: Point(Zoint { lng: 0.0, lat: 1.0 })
@@ -141,6 +148,7 @@ fn basic_write() {
     db.build(&mut wtxn, &NoProgress).unwrap();
 
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     1: Point(Zoint { lng: 0.0, lat: 1.0 })
@@ -159,6 +167,7 @@ fn basic_write() {
     db.build(&mut wtxn, &NoProgress).unwrap();
 
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     1: Point(Zoint { lng: 0.0, lat: 1.0 })
@@ -193,6 +202,7 @@ fn bug_write_points_create_cells_too_deep() {
     db.add(&mut wtxn, 1, &point).unwrap();
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: -11.460678226504395, lat: 48.213563161838714 })
     1: Point(Zoint { lng: -1.520397001416467, lat: 54.586501531522245 })
@@ -222,6 +232,7 @@ fn bug_write_points_create_unrelated_cells() {
     db.add(&mut wtxn, 1, &point).unwrap();
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 })
     1: Point(Zoint { lng: 7.435508967561083, lat: 43.76438119061842 })
@@ -259,6 +270,7 @@ fn query_points_on_transmeridian_cell() {
     db.add(&mut wtxn, 0, &lake).unwrap();
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: -172.36201, lat: 64.42921 })
     # Cells
@@ -275,6 +287,7 @@ fn query_points_on_transmeridian_cell() {
     db.add(&mut wtxn, 1, &airport).unwrap();
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Point(Zoint { lng: -172.36201, lat: 64.42921 })
     1: Point(Zoint { lng: -173.23841, lat: 64.37949 })
@@ -319,6 +332,7 @@ fn store_all_kind_of_collection() {
 
     db.build(&mut wtxn, &NoProgress).unwrap();
     insta::assert_snapshot!(db.snap(&wtxn), @r"
+    # Version: 0.2.0
     # Items
     0: Collection(Zollection { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: ZultiPoints { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: [Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 }] }, lines: ZultiLines { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zines: [] }, polygons: ZultiPolygons { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zolygons: [] } })
     1: Collection(Zollection { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: ZultiPoints { bounding_box: BoundingBox { bottom_left: Coord { x: 6.0197316417968105, y: 49.63676497357687 }, top_right: Coord { x: 6.0197316417968105, y: 49.63676497357687 } }, points: [Zoint { lng: 6.0197316417968105, lat: 49.63676497357687 }] }, lines: ZultiLines { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zines: [] }, polygons: ZultiPolygons { bounding_box: BoundingBox { bottom_left: Coord { x: 0.0, y: 0.0 }, top_right: Coord { x: 0.0, y: 0.0 } }, zolygons: [] } })

@@ -16,18 +16,20 @@ use h3o::{
     geom::{ContainmentMode, PlotterBuilder, TilerBuilder},
 };
 use heed::{
-    DatabaseStat, Env, RoTxn, RwTxn,
+    DatabaseStat, Env, RoTxn, RwTxn, Unspecified,
     byteorder::BE,
     types::{Bytes, U32},
 };
 use intmap::IntMap;
 use keys::{CellIndexCodec, CellKeyCodec, ItemKeyCodec, Key, KeyPrefixVariantCodec, KeyVariant};
+use metadata::{Version, VersionCodec};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use steppe::Progress;
 use thread_local::ThreadLocal;
 
 mod error;
 mod keys;
+mod metadata;
 pub mod roaring;
 pub mod zerometry;
 
@@ -40,6 +42,7 @@ use crate::{roaring::RoaringBitmapCodec, zerometry::ZerometryCodec};
 pub type ItemDb = heed::Database<ItemKeyCodec, ZerometryCodec>;
 pub type CellDb = heed::Database<CellKeyCodec, CellIndexCodec>;
 pub type UpdateDb = heed::Database<U32<BE>, UpdateType>;
+pub type MetadataDb = heed::Database<MetadataKey, Unspecified>;
 pub type ItemId = u32;
 
 steppe::make_enum_progress! {
@@ -50,6 +53,7 @@ steppe::make_enum_progress! {
         RemoveDeletedItemsFromDatabase,
         InsertItemsAtLevelZero,
         InsertItemsRecursively,
+        UpdateTheMetadata,
     }
 }
 steppe::make_atomic_progress!(Item alias AtomicItemStep => "item");
@@ -83,18 +87,43 @@ impl<'a> heed::BytesDecode<'a> for UpdateType {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MetadataKey {
+    Version = 0,
+}
+
+impl<'a> heed::BytesEncode<'a> for MetadataKey {
+    type EItem = Self;
+
+    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, heed::BoxedError> {
+        Ok(Cow::Owned(vec![*item as u8]))
+    }
+}
+
+impl<'a> heed::BytesDecode<'a> for MetadataKey {
+    type DItem = Self;
+
+    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, heed::BoxedError> {
+        match bytes {
+            [b] if *b == MetadataKey::Version as u8 => Ok(MetadataKey::Version),
+            _ => panic!("Invalid metadata key {bytes:?}"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Cellulite {
     pub(crate) item: ItemDb,
     pub(crate) cell: CellDb,
     pub(crate) update: UpdateDb,
+    pub(crate) metadata: MetadataDb,
     /// After how many elements should we break a cell into sub-cells
     pub threshold: u64,
 }
 
 impl Cellulite {
     pub const fn nb_dbs() -> u32 {
-        3
+        4
     }
 
     pub fn item_db_stats(&self, rtxn: &RoTxn) -> heed::Result<DatabaseStat> {
@@ -109,6 +138,10 @@ impl Cellulite {
         self.update.stat(rtxn)
     }
 
+    pub fn metadata_db_stats(&self, rtxn: &RoTxn) -> heed::Result<DatabaseStat> {
+        self.metadata.stat(rtxn)
+    }
+
     pub const fn default_threshold() -> u64 {
         200
     }
@@ -117,19 +150,22 @@ impl Cellulite {
         let item = env.create_database(wtxn, Some("cellulite-item"))?;
         let cell = env.create_database(wtxn, Some("cellulite-cell"))?;
         let update = env.create_database(wtxn, Some("cellulite-update"))?;
+        let metadata = env.create_database(wtxn, Some("cellulite-metadata"))?;
         Ok(Self {
             item,
             cell,
             update,
+            metadata,
             threshold: Self::default_threshold(),
         })
     }
 
-    pub fn from_dbs(item: ItemDb, cell: CellDb, update: UpdateDb) -> Self {
+    pub fn from_dbs(item: ItemDb, cell: CellDb, update: UpdateDb, metadata: MetadataDb) -> Self {
         Self {
             item,
             cell,
             update,
+            metadata,
             threshold: Self::default_threshold(),
         }
     }
@@ -138,6 +174,7 @@ impl Cellulite {
         self.item.clear(wtxn)?;
         self.cell.clear(wtxn)?;
         self.update.clear(wtxn)?;
+        self.metadata.clear(wtxn)?;
         Ok(())
     }
 
@@ -151,6 +188,21 @@ impl Cellulite {
 
     fn inner_shape_cell_db(&self) -> heed::Database<CellKeyCodec, RoaringBitmapCodec> {
         self.cell.remap_data_type()
+    }
+
+    pub fn get_version(&self, rtxn: &RoTxn) -> heed::Result<Version> {
+        self.metadata
+            .remap_data_type::<VersionCodec>()
+            .get(rtxn, &MetadataKey::Version)
+            // If there is no version in the database it means we never wrote anything to the database
+            // and we're at the last/current version
+            .map(|opt| opt.unwrap_or_default())
+    }
+
+    fn set_version(&self, wtxn: &mut RwTxn, version: &Version) -> heed::Result<()> {
+        self.metadata
+            .remap_data_type::<VersionCodec>()
+            .put(wtxn, &MetadataKey::Version, version)
     }
 
     /// Return all the cells used internally in the database
@@ -267,6 +319,11 @@ impl Cellulite {
     /// 4. We take each level-zero cell one by one and if it contains new items we insert them in the database in batch at the next level
     ///    TODO: Could be parallelized fairly easily I think
     pub fn build(&self, wtxn: &mut RwTxn, progress: &impl Progress) -> Result<()> {
+        let db_version = self.get_version(wtxn)?;
+        if db_version != Version::default() {
+            return Err(Error::VersionMismatchOnBuild(db_version));
+        }
+
         // 1.
         let (inserted_items, removed_items) =
             self.retrieve_and_clear_updated_items(wtxn, progress)?;
@@ -296,6 +353,9 @@ impl Cellulite {
             }
             self.insert_chunk_of_items_recursively(wtxn, bitmap, cell, &frozen_items)?;
         }
+
+        progress.update(BuildSteps::UpdateTheMetadata);
+        self.set_version(wtxn, &Version::default())?;
 
         Ok(())
     }
