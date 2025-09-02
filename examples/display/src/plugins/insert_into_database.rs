@@ -6,6 +6,7 @@ use std::sync::{
 
 use egui::Pos2;
 use egui::{mutex::Mutex, RichText, Ui, Vec2};
+use geo::{Densify, Haversine};
 use geo_types::{Coord, Point};
 use geojson::GeoJson;
 use walkers::Plugin;
@@ -159,6 +160,7 @@ impl Plugin for InsertIntoDatabase {
             InsertMode::Polygon => {
                 let points = self.insert_shape.lock();
                 if !points.is_empty() {
+                    let mut line_to_display = points.clone();
                     let mut line: Vec<Pos2> = points
                         .iter()
                         .map(|point| projector.project(Point::new(point.x, point.y)).to_pos2())
@@ -167,12 +169,33 @@ impl Plugin for InsertIntoDatabase {
                     // Add mouse position or close polygon
                     if let Some(mouse_pos) = response.hover_pos() {
                         line.push(mouse_pos);
+                        let pos = projector.unproject(Vec2 {
+                            x: mouse_pos.x,
+                            y: mouse_pos.y,
+                        });
+                        line_to_display.push(Coord {
+                            x: pos.x(),
+                            y: pos.y(),
+                        });
                     } else {
-                        line.push(line[0]); // Close polygon by adding first point
+                        // Close polygon by adding first point
+                        line.push(line[0]);
+                        line_to_display.push(line_to_display[0]);
                     }
+                    let line_to_display = geo_types::LineString::new(line_to_display);
+                    let line_to_display = Haversine.densify(&line_to_display, 10_000.0);
+                    let line_to_display = line_to_display
+                        .into_points()
+                        .into_iter()
+                        .map(|point| {
+                            projector
+                                .project(Point::new(point.x(), point.y()))
+                                .to_pos2()
+                        })
+                        .collect();
 
                     ui.painter().add(egui::Shape::line(
-                        line,
+                        line_to_display,
                         egui::Stroke::new(8.0, egui::Color32::YELLOW),
                     ));
                 }

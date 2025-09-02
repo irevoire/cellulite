@@ -92,7 +92,7 @@ impl Cellulite {
     }
 
     pub const fn default_threshold() -> u64 {
-        200
+        2
     }
 
     pub fn create_from_env<Tls>(env: &Env<Tls>, wtxn: &mut RwTxn) -> Result<Self> {

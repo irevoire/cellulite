@@ -305,7 +305,7 @@ impl Cellulite {
                 for cell in tiler.into_coverage() {
                     // If the cell is entirely contained in the polygon, insert directly to belly_cell_db
                     let cell_polygon = MultiPolygon::from(cell);
-                    if polygon.strict_contains(&cell_polygon) {
+                    if polygon.contains(&cell_polygon) {
                         belly_cells.push(cell);
                     } else {
                         // Otherwise use insert_shape_in_cell for partial overlaps

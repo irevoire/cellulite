@@ -1,7 +1,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use egui::{epaint::PathStroke, Color32, Painter, Pos2, Ui, Vec2};
-use geo::{Contains, Densify, Geometry, Haversine, Intersects, MultiPolygon, Point, Rect};
+use geo::{
+    line_measures::Densifiable, Contains, Densify, Geometry, Haversine, Intersects, MultiPolygon,
+    Point, Rect,
+};
 use geo_types::Coord;
 use geojson::GeoJson;
 use h3o::CellIndex;
@@ -95,7 +98,8 @@ pub fn draw_geometry_on_map(
     painter: &egui::Painter,
     value: &GeoJson,
 ) {
-    match Geometry::try_from(value.clone()).unwrap() {
+    let geom = Geometry::try_from(value.clone()).unwrap();
+    match geom {
         Geometry::Point(coords) => {
             let coord = h3o::LatLng::new(coords.y(), coords.x()).unwrap();
             if !displayed_rect.contains(&Point::new(coord.lng(), coord.lat())) {
@@ -119,6 +123,7 @@ pub fn draw_geometry_on_map(
 
             if polygon.intersects(&displayed_rect) {
                 let points: Vec<_> = polygon
+                    .densify(&Haversine, 10_000.0)
                     .exterior()
                     .points()
                     .map(|point| {
@@ -133,6 +138,7 @@ pub fn draw_geometry_on_map(
             for polygon in polygons {
                 if polygon.intersects(&displayed_rect) {
                     let points: Vec<_> = polygon
+                        .densify(&Haversine, 10_000.0)
                         .exterior()
                         .points()
                         .map(|point| {
