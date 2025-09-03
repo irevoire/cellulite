@@ -103,9 +103,8 @@ fn main() {
         Dataset::ParisVoies => {
             &mut paris_voies::parse() as &mut dyn Iterator<Item = (String, GeoJson)>
         }
-        Dataset::CadastreAddr => {
-            &mut france_cadastre_addresses::parse() as &mut dyn Iterator<Item = (String, GeoJson)>
-        }
+        Dataset::CadastreAddr => &mut france_cadastre_addresses::parse(&args.selector)
+            as &mut dyn Iterator<Item = (String, GeoJson)>,
         Dataset::CadastreParcelle => &mut france_cadastre_parcelles::parse(args.selector)
             as &mut dyn Iterator<Item = (String, GeoJson)>,
         Dataset::Canton => {
