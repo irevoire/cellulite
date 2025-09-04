@@ -18,7 +18,7 @@ fn from_0_2_0() {
             .unwrap()
     };
     let mut wtxn = env.write_txn().unwrap();
-    let cellulite = Cellulite::create_from_env(&env, &mut wtxn).unwrap();
+    let cellulite = Cellulite::create_from_env(&env, &mut wtxn, "cellulite").unwrap();
     insta::assert_snapshot!(cellulite.get_version(&wtxn).unwrap(), @"0.2.0");
 
     // This matches only a subset of the multi-point containing all the trees
@@ -30,7 +30,7 @@ fn from_0_2_0() {
        (x: 3.6056618690490723, y: 43.990875244140625)
     ];
 
-    let ret = cellulite.in_shape(&wtxn, &trees, &mut |_| ()).unwrap();
+    let ret = cellulite.in_shape(&wtxn, &trees).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[3]>");
     let shape = cellulite.item(&wtxn, 3).unwrap().unwrap();
     assert!(shape.to_multi_points().is_some());
@@ -44,7 +44,7 @@ fn from_0_2_0() {
          (x: 3.607173442840576, y: 43.991546630859375)
     ];
 
-    let ret = cellulite.in_shape(&wtxn, &desk, &mut |_| ()).unwrap();
+    let ret = cellulite.in_shape(&wtxn, &desk).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[1, 2]>");
     let shape = cellulite.item(&wtxn, 1).unwrap().unwrap();
     assert!(shape.to_point().is_some());
@@ -63,12 +63,12 @@ fn from_0_2_0() {
     cellulite.build(&mut wtxn, &NoProgress).unwrap();
 
     // We do the two same query except we removed the movie theater
-    let ret = cellulite.in_shape(&wtxn, &trees, &mut |_| ()).unwrap();
+    let ret = cellulite.in_shape(&wtxn, &trees).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[3]>");
     let shape = cellulite.item(&wtxn, 3).unwrap().unwrap();
     assert!(shape.to_multi_points().is_some());
 
-    let ret = cellulite.in_shape(&wtxn, &desk, &mut |_| ()).unwrap();
+    let ret = cellulite.in_shape(&wtxn, &desk).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[1]>");
     let shape = cellulite.item(&wtxn, 1).unwrap().unwrap();
     assert!(shape.to_point().is_some());

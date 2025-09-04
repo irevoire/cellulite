@@ -148,7 +148,7 @@ fn main() {
     }
     .unwrap();
     let mut wtxn = env.write_txn().unwrap();
-    let cellulite = Cellulite::create_from_env(&env, &mut wtxn).unwrap();
+    let cellulite = Cellulite::create_from_env(&env, &mut wtxn, "cellulite").unwrap();
     let metadata: heed::Database<Str, Bytes> =
         env.create_database(&mut wtxn, Some("metadata")).unwrap();
 
@@ -226,9 +226,9 @@ fn main() {
         let rtxn = env.read_txn().unwrap();
         let le_vigan = le_vigan();
         let time = std::time::Instant::now();
-        let result = cellulite.in_shape(&rtxn, &le_vigan, &mut |_| ()).unwrap();
+        let result = cellulite.in_shape(&rtxn, &le_vigan).unwrap();
         for _ in 0..repeat {
-            let sub_res = cellulite.in_shape(&rtxn, &le_vigan, &mut |_| ()).unwrap();
+            let sub_res = cellulite.in_shape(&rtxn, &le_vigan).unwrap();
             assert_eq!(result.len(), sub_res.len());
         }
         println!(
@@ -240,9 +240,9 @@ fn main() {
         let time = std::time::Instant::now();
 
         let nimes = nimes();
-        let result = cellulite.in_shape(&rtxn, &nimes, &mut |_| ()).unwrap();
+        let result = cellulite.in_shape(&rtxn, &nimes).unwrap();
         for _ in 0..repeat {
-            let sub_res = cellulite.in_shape(&rtxn, &nimes, &mut |_| ()).unwrap();
+            let sub_res = cellulite.in_shape(&rtxn, &nimes).unwrap();
             assert_eq!(result.len(), sub_res.len());
         }
         println!(
@@ -253,9 +253,9 @@ fn main() {
 
         let repeat = 10;
         let gard = gard();
-        let result = cellulite.in_shape(&rtxn, &gard, &mut |_| ()).unwrap();
+        let result = cellulite.in_shape(&rtxn, &gard).unwrap();
         for _ in 0..repeat {
-            let sub_res = cellulite.in_shape(&rtxn, &gard, &mut |_| ()).unwrap();
+            let sub_res = cellulite.in_shape(&rtxn, &gard).unwrap();
             assert_eq!(result.len(), sub_res.len());
         }
         println!(
@@ -266,9 +266,9 @@ fn main() {
 
         let repeat = 10;
         let occitanie = occitanie();
-        let result = cellulite.in_shape(&rtxn, &occitanie, &mut |_| ()).unwrap();
+        let result = cellulite.in_shape(&rtxn, &occitanie).unwrap();
         for _ in 0..repeat {
-            let sub_res = cellulite.in_shape(&rtxn, &occitanie, &mut |_| ()).unwrap();
+            let sub_res = cellulite.in_shape(&rtxn, &occitanie).unwrap();
             assert_eq!(result.len(), sub_res.len());
         }
         println!(

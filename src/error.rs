@@ -16,6 +16,10 @@ pub enum Error {
         Version::default(), .0
     )]
     VersionMismatchOnBuild(Version),
+    #[error(
+        "Tried to open a cellulite database, but it's inner database don't exists yet. Call `create_from_env` first."
+    )]
+    DatabaseDoesntExists,
 
     // External errors, sometimes it's a user error and sometimes it's not
     #[error(transparent)]

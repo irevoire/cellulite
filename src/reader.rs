@@ -12,6 +12,12 @@ use zerometry::RelationBetweenShapes;
 use crate::{Cellulite, Result, keys::Key};
 
 impl Cellulite {
+    pub fn in_shape(&self, rtxn: &RoTxn, polygon: &Polygon) -> Result<RoaringBitmap> {
+        self.in_shape_with_inspector(rtxn, polygon, &mut |_| ())
+    }
+
+    /// Return all the items that intersects or are contained in the specified polygon.
+    /// The `inspector` lets you see how the search was made internally.
     // The strategy to retrieve the points in a shape is to:
     // 1. Retrieve all the cell@res0 that contains the shape
     // 2. Iterate over these cells
@@ -19,7 +25,7 @@ impl Cellulite {
     //  2.2 Otherwise:
     //   - If the cell is a leaf => iterate over all of its point and add the one that fits in the shape to the result
     //   - Otherwise, increase the precision and iterate on the range of cells => repeat step 2
-    pub fn in_shape(
+    pub fn in_shape_with_inspector(
         &self,
         rtxn: &RoTxn,
         polygon: &Polygon,
@@ -112,13 +118,13 @@ impl Cellulite {
         radius: f64,
         resolution: usize,
     ) -> Result<RoaringBitmap> {
-        self.in_circle_with_params(rtxn, center, radius, resolution, &Haversine, &mut |_| ())
+        self.in_circle_with_inspector(rtxn, center, radius, resolution, &Haversine, &mut |_| ())
     }
 
     /// Retrieve all items intersecting a circle with a given center and radius.
     /// This is approximate. It may miss items that are in the circle, but it will never return items that are not in the circle.
     /// The resolution parameter controls the number of points used to approximate the circle.
-    pub fn in_circle_with_params<Measure: Destination<f64>>(
+    pub fn in_circle_with_inspector<Measure: Destination<f64>>(
         &self,
         rtxn: &RoTxn,
         center: Point,
@@ -138,7 +144,7 @@ impl Cellulite {
 
         let polygon = Polygon::new(points.into(), Vec::new());
 
-        self.in_shape(rtxn, &polygon, inspector)
+        self.in_shape_with_inspector(rtxn, &polygon, inspector)
     }
 }
 

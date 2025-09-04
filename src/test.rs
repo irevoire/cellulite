@@ -96,7 +96,7 @@ fn create_database() -> DatabaseHandle {
     }
     .unwrap();
     let mut wtxn = env.write_txn().unwrap();
-    let cellulite = Cellulite::create_from_env(&env, &mut wtxn).unwrap();
+    let cellulite = Cellulite::create_from_env(&env, &mut wtxn, "cellulite").unwrap();
     wtxn.commit().unwrap();
     DatabaseHandle {
         env,
@@ -136,6 +136,7 @@ fn basic_write() {
     # Items
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     # Cells
+    # Belly Cells
     ");
 
     db.build(&mut wtxn, &NoProgress).unwrap();
@@ -145,6 +146,7 @@ fn basic_write() {
     0: Point(Zoint { lng: 0.0, lat: 0.0 })
     # Cells
     Cell { res: 0, center: (2.3009, -5.2454) }: RoaringBitmap<[0]>
+    # Belly Cells
     ");
 
     let point = GeoJson::from(geojson::Geometry::new(geojson::Value::Point(vec![
@@ -164,6 +166,7 @@ fn basic_write() {
     2: Point(Zoint { lng: 0.0, lat: 2.0 })
     # Cells
     Cell { res: 0, center: (2.3009, -5.2454) }: RoaringBitmap<[0]>
+    # Belly Cells
     ");
 
     db.build(&mut wtxn, &NoProgress).unwrap();
@@ -179,6 +182,8 @@ fn basic_write() {
     Cell { res: 1, center: (2.0979, 0.4995) }: RoaringBitmap<[0, 1, 2]>
     Cell { res: 2, center: (2.0979, 0.4995) }: RoaringBitmap<[1, 2]>
     Cell { res: 2, center: (-0.4597, 0.5342) }: RoaringBitmap<[0]>
+    # Belly Cells
+    Cell { res: 1, center: (2.0979, 0.4995) }: RoaringBitmap<[]>
     ");
 
     let point = GeoJson::from(geojson::Geometry::new(geojson::Value::Point(vec![
@@ -202,6 +207,8 @@ fn basic_write() {
     Cell { res: 3, center: (2.1299, -0.3656) }: RoaringBitmap<[2]>
     Cell { res: 3, center: (1.2792, -0.0699) }: RoaringBitmap<[1]>
     Cell { res: 3, center: (2.9436, 0.1993) }: RoaringBitmap<[3]>
+    # Belly Cells
+    Cell { res: 2, center: (2.0979, 0.4995) }: RoaringBitmap<[]>
     ");
 }
 
@@ -231,6 +238,7 @@ fn bug_write_points_create_cells_too_deep() {
     Cell { res: 0, center: (52.6758, -11.6016) }: RoaringBitmap<[0, 1]>
     Cell { res: 1, center: (45.2992, -14.2485) }: RoaringBitmap<[0]>
     Cell { res: 1, center: (53.6528, 0.2143) }: RoaringBitmap<[1]>
+    # Belly Cells
     ");
 }
 
@@ -261,6 +269,7 @@ fn bug_write_points_create_unrelated_cells() {
     Cell { res: 0, center: (48.7583, 18.3030) }: RoaringBitmap<[0, 1]>
     Cell { res: 1, center: (47.9847, 6.9179) }: RoaringBitmap<[0]>
     Cell { res: 1, center: (40.9713, 2.8207) }: RoaringBitmap<[1]>
+    # Belly Cells
     ");
 }
 
@@ -296,13 +305,14 @@ fn query_points_on_transmeridian_cell() {
     0: Point(Zoint { lng: -172.36201, lat: 64.42921 })
     # Cells
     Cell { res: 0, center: (64.4181, -158.9175) }: RoaringBitmap<[0]>
+    # Belly Cells
     ");
 
-    let ret = db.in_shape(&wtxn, &contains_lake, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains_lake).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
-    let ret = db.in_shape(&wtxn, &contains_airport, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains_airport).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[]>");
-    let ret = db.in_shape(&wtxn, &contains_both, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains_both).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
 
     db.add(&mut wtxn, 1, &airport).unwrap();
@@ -317,15 +327,15 @@ fn query_points_on_transmeridian_cell() {
     Cell { res: 1, center: (67.6370, -175.8874) }: RoaringBitmap<[0, 1]>
     Cell { res: 2, center: (62.9574, -171.6851) }: RoaringBitmap<[0]>
     Cell { res: 2, center: (64.6946, -176.8313) }: RoaringBitmap<[1]>
+    # Belly Cells
+    Cell { res: 1, center: (67.6370, -175.8874) }: RoaringBitmap<[]>
     ");
 
-    let ret = db.in_shape(&wtxn, &contains_lake, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains_lake).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0]>");
-    let ret = db
-        .in_shape(&wtxn, &contains_airport, &mut |s| println!("{s:?}"))
-        .unwrap();
+    let ret = db.in_shape(&wtxn, &contains_airport).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[1]>");
-    let ret = db.in_shape(&wtxn, &contains_both, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains_both).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1]>");
 }
 
@@ -375,10 +385,26 @@ fn store_all_kind_of_collection() {
     Cell { res: 13, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
     Cell { res: 14, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
     Cell { res: 15, center: (49.6368, 6.0197) }: RoaringBitmap<[0, 1, 2]>
+    # Belly Cells
+    Cell { res: 1, center: (47.9847, 6.9179) }: RoaringBitmap<[]>
+    Cell { res: 2, center: (50.4683, 5.6987) }: RoaringBitmap<[]>
+    Cell { res: 3, center: (49.7185, 6.6446) }: RoaringBitmap<[]>
+    Cell { res: 4, center: (49.7700, 6.0547) }: RoaringBitmap<[]>
+    Cell { res: 5, center: (49.6335, 5.9622) }: RoaringBitmap<[]>
+    Cell { res: 6, center: (49.6264, 6.0462) }: RoaringBitmap<[]>
+    Cell { res: 7, center: (49.6418, 6.0270) }: RoaringBitmap<[]>
+    Cell { res: 8, center: (49.6356, 6.0186) }: RoaringBitmap<[]>
+    Cell { res: 9, center: (49.6356, 6.0186) }: RoaringBitmap<[]>
+    Cell { res: 10, center: (49.6365, 6.0198) }: RoaringBitmap<[]>
+    Cell { res: 11, center: (49.6368, 6.0194) }: RoaringBitmap<[]>
+    Cell { res: 12, center: (49.6368, 6.0197) }: RoaringBitmap<[]>
+    Cell { res: 13, center: (49.6368, 6.0197) }: RoaringBitmap<[]>
+    Cell { res: 14, center: (49.6368, 6.0197) }: RoaringBitmap<[]>
+    Cell { res: 15, center: (49.6368, 6.0197) }: RoaringBitmap<[]>
     ");
     let contains =
         polygon![(x: 6.0, y: 49.0), (x: 7.0, y: 49.0), (x: 7.0, y: 50.0), (x: 6.0, y: 50.0)];
-    let ret = db.in_shape(&wtxn, &contains, &mut |_| ()).unwrap();
+    let ret = db.in_shape(&wtxn, &contains).unwrap();
     insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1, 2]>");
 }
 
@@ -431,7 +457,7 @@ fn write_polygon_with_belly_cells_at_res0() {
          (x: -6.9279303550720215, y: 49.60155487060547),
          (x: -13.3521118164062, y: 51.781051635742195)
     ];
-    let res = cellulite.in_shape(&wtxn, &filter, &mut |_| ()).unwrap();
+    let res = cellulite.in_shape(&wtxn, &filter).unwrap();
     insta::assert_debug_snapshot!(res, @"RoaringBitmap<[0]>");
 }
 
@@ -481,7 +507,7 @@ fn write_polygon_with_belly_cells_at_res1() {
          (x: -7.785157203674316, y: 51.10857391357422),
          (x: -14.853970527648926, y: 52.716609954833984)
     ];
-    let res = cellulite.in_shape(&wtxn, &filter, &mut |_| ()).unwrap();
+    let res = cellulite.in_shape(&wtxn, &filter).unwrap();
     insta::assert_debug_snapshot!(res, @"RoaringBitmap<[0]>");
 }
 

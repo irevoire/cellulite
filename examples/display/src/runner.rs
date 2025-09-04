@@ -266,14 +266,14 @@ impl Runner {
                     let polygon = Polygon::new(LineString(polygon), Vec::new());
                     let mut steps = Vec::new();
                     let now = std::time::Instant::now();
-                    let matched = self.db.in_shape(&wtxn, &polygon, &mut |_| ()).unwrap();
+                    let matched = self.db.in_shape(&wtxn, &polygon).unwrap();
                     let cold = now.elapsed();
-                    self.db.in_shape(&wtxn, &polygon, &mut |_| ()).unwrap();
+                    self.db.in_shape(&wtxn, &polygon).unwrap();
                     self.db
-                        .in_shape(&wtxn, &polygon, &mut |step| steps.push(step))
+                        .in_shape_with_inspector(&wtxn, &polygon, &mut |step| steps.push(step))
                         .unwrap();
                     let now = std::time::Instant::now();
-                    self.db.in_shape(&wtxn, &polygon, &mut |_| ()).unwrap();
+                    self.db.in_shape(&wtxn, &polygon).unwrap();
                     let hot = now.elapsed();
 
                     *self.filter_stats.lock() = Some(FilterStats {

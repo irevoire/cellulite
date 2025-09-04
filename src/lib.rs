@@ -95,11 +95,13 @@ impl Cellulite {
         200
     }
 
-    pub fn create_from_env<Tls>(env: &Env<Tls>, wtxn: &mut RwTxn) -> Result<Self> {
-        let item = env.create_database(wtxn, Some("cellulite-item"))?;
-        let cell = env.create_database(wtxn, Some("cellulite-cell"))?;
-        let update = env.create_database(wtxn, Some("cellulite-update"))?;
-        let metadata = env.create_database(wtxn, Some("cellulite-metadata"))?;
+    /// Create all the databases required for cellulite to work.
+    /// The prefix lets you to hold multiple cellulite database in a single environment.
+    pub fn create_from_env<Tls>(env: &Env<Tls>, wtxn: &mut RwTxn, prefix: &str) -> Result<Self> {
+        let item = env.create_database(wtxn, Some(&format!("{prefix}-item")))?;
+        let cell = env.create_database(wtxn, Some(&format!("{prefix}-cell")))?;
+        let update = env.create_database(wtxn, Some(&format!("{prefix}-update")))?;
+        let metadata = env.create_database(wtxn, Some(&format!("{prefix}-metadata")))?;
         Ok(Self {
             item,
             cell,
@@ -109,6 +111,31 @@ impl Cellulite {
         })
     }
 
+    /// Open all the databases required for cellulite to work, return an error if any of the required database doesn't exists.
+    /// The prefix lets you to hold multiple cellulite database in a single environment.
+    pub fn open_from_env<Tls>(env: &Env<Tls>, rtxn: &RoTxn, prefix: &str) -> Result<Self> {
+        let item = env
+            .open_database(rtxn, Some(&format!("{prefix}-item")))?
+            .ok_or(Error::DatabaseDoesntExists)?;
+        let cell = env
+            .open_database(rtxn, Some(&format!("{prefix}-cell")))?
+            .ok_or(Error::DatabaseDoesntExists)?;
+        let update = env
+            .open_database(rtxn, Some(&format!("{prefix}-update")))?
+            .ok_or(Error::DatabaseDoesntExists)?;
+        let metadata = env
+            .open_database(rtxn, Some(&format!("{prefix}-metadata")))?
+            .ok_or(Error::DatabaseDoesntExists)?;
+        Ok(Self {
+            item,
+            cell,
+            update,
+            metadata,
+            threshold: Self::default_threshold(),
+        })
+    }
+
+    /// Create the cellulite struct from already opened databases.
     pub fn from_dbs(item: ItemDb, cell: CellDb, update: UpdateDb, metadata: MetadataDb) -> Self {
         Self {
             item,
@@ -119,6 +146,7 @@ impl Cellulite {
         }
     }
 
+    /// Clear all the databases.
     pub fn clear(&self, wtxn: &mut RwTxn) -> Result<()> {
         self.item.clear(wtxn)?;
         self.cell.clear(wtxn)?;
@@ -139,6 +167,7 @@ impl Cellulite {
         self.cell.remap_data_type()
     }
 
+    /// Return the version of the cellulite database.
     pub fn get_version(&self, rtxn: &RoTxn) -> heed::Result<Version> {
         self.metadata
             .remap_data_type::<VersionCodec>()
@@ -172,7 +201,7 @@ impl Cellulite {
             }))
     }
 
-    /// Return all the cells used internally in the database
+    /// Return all the belly cells used internally in the database
     pub fn inner_belly_cells<'a>(
         &self,
         rtxn: &'a RoTxn,
@@ -205,6 +234,8 @@ impl Cellulite {
         Ok(self.item.iter(rtxn)?)
     }
 
+    /// Insert a geojson to the database. The geojson won't be stored as-is and cannot be returned later.
+    /// For the item to be searchable you must [`Self::build`] the database afterward.
     pub fn add(&self, wtxn: &mut RwTxn, item: ItemId, geo: &GeoJson) -> Result<()> {
         let geom = geo_types::Geometry::<f64>::try_from(geo.clone()).unwrap();
         self.item_db().put(wtxn, &item, &geom)?;
@@ -212,7 +243,8 @@ impl Cellulite {
         Ok(())
     }
 
-    /// The `geo` must be a valid zerometry otherwise the database will be corrupted.
+    /// The `geo` must be a valid `Zerometry` otherwise the database will be corrupted.
+    /// For the item to be searchable you must [`Self::build`] the database afterward.
     pub fn add_raw_zerometry(&self, wtxn: &mut RwTxn, item: ItemId, geo: &[u8]) -> Result<()> {
         self.item_db()
             .remap_data_type::<Bytes>()
@@ -221,11 +253,14 @@ impl Cellulite {
         Ok(())
     }
 
+    /// Delete an item by its id.
+    /// For the item to be removed you must [`Self::build`] the database afterward.
     pub fn delete(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<()> {
         self.update.put(wtxn, &item, &UpdateType::Delete)?;
         Ok(())
     }
 
+    /// Return stats of all the entries in the database.
     pub fn stats(&self, rtxn: &RoTxn) -> Result<Stats> {
         let total_items = self.items(rtxn)?.count();
         let mut total_cells = 0;
@@ -237,10 +272,23 @@ impl Cellulite {
             *cells_by_resolution.entry(cell.resolution()).or_default() += 1;
         }
 
+        let mut total_belly_cells = 0;
+        let mut belly_cells_by_resolution = BTreeMap::new();
+
+        for entry in self.inner_belly_cells(rtxn)? {
+            let (cell, _) = entry?;
+            total_belly_cells += 1;
+            *belly_cells_by_resolution
+                .entry(cell.resolution())
+                .or_default() += 1;
+        }
+
         Ok(Stats {
             total_cells,
             total_items,
             cells_by_resolution,
+            total_belly_cells,
+            belly_cells_by_resolution,
         })
     }
 }
@@ -248,6 +296,8 @@ impl Cellulite {
 #[derive(Debug, Default, Clone)]
 pub struct Stats {
     pub total_cells: usize,
+    pub total_belly_cells: usize,
     pub total_items: usize,
     pub cells_by_resolution: BTreeMap<Resolution, usize>,
+    pub belly_cells_by_resolution: BTreeMap<Resolution, usize>,
 }

@@ -56,13 +56,14 @@ impl Cellulite {
         Ok((inserted, deleted))
     }
 
-    /// Indexing is in 4 steps:
-    /// 1. We retrieve all the items that have been updated since the last indexing
-    /// 2. We remove the deleted items from the database and remove the empty cells at the same time
-    ///    TODO: If a cell becomes too small we cannot delete it so the database won't shrink properly but won't be corrupted either
-    /// 3. We insert the new items in the database **only at the level 0**
-    /// 4. We take each level-zero cell one by one and if it contains new items we insert them in the database in batch at the next level
-    ///    TODO: Could be parallelized fairly easily I think
+    /// Build all the internal structure required to query the database.
+    // Indexing is in 4 steps:
+    // 1. We retrieve all the items that have been updated since the last indexing
+    // 2. We remove the deleted items from the database and remove the empty cells at the same time
+    //    TODO: If a cell becomes too small we cannot delete it so the database won't shrink properly but won't be corrupted either
+    // 3. We insert the new items in the database **only at the level 0**
+    // 4. We take each level-zero cell one by one and if it contains new items we insert them in the database in batch at the next level
+    //    TODO: Could be parallelized fairly easily I think
     pub fn build(&self, wtxn: &mut RwTxn, progress: &impl Progress) -> Result<()> {
         let db_version = self.get_version(wtxn)?;
         if db_version != Version::default() {
